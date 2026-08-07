@@ -246,3 +246,30 @@ frontend:
 ## Agent communication
 - agent: "testing"
   message: "High priority: investigate preview deployment/static asset routing. The configured URL returns 404 for all Next.js app chunks and CSS, so the frontend never hydrates beyond Loading LOOP…. Verify deployment build output, asset basePath/CDN/cache, and restart/redeploy before requesting UI retest."
+
+## Main agent runtime cleanup
+- Stopped the supervisor-managed Next.js service, removed `/app/.next`, ran a clean `yarn build`, restarted Next.js, and verified generated local static assets return HTTP 200.
+- `nextjs` supervisor status is RUNNING. Frontend test is requested again against the clean server state.
+
+
+## Testing Agent Run 5 — LOOP phase 1 frontend UI retest (2026-08-07)
+- **Tests passed:** Clean preview now serves the Next.js app correctly; desktop 1920x800 login page renders with LOOP branding, email/password fields, sign-in button, and signup toggle. Signup mode renders name/workspace/email/password fields. With DATABASE_URL absent, signup and login both show `DATABASE_URL is not configured.` (HTTP 503) without crashing or falsely authenticating. Unauthenticated dashboard shell is not exposed. Mobile 390x844 login renders and has no horizontal overflow.
+- **Tests failed:** Browser console reports NextAuth `CLIENT_FETCH_ERROR` for `/api/auth/session` and failed 503 auth requests during expected missing-database testing; `/api/auth/session` also appeared aborted by browser instrumentation. No static asset 404s observed in this run. Authenticated dashboard, session persistence, DB-backed stats/feedback, and protected dashboard after valid login remain untestable without DATABASE_URL; no successful auth was mocked.
+- **UI/UX issues:** No major desktop/mobile rendering or responsive overflow issue observed. Mobile screenshot captured. Error text is visible inline and the form remains usable after setup failure.
+- **Authentication issues:** Missing-DATABASE_URL boundary behaves correctly for login/signup; session endpoint console error is expected while auth/database setup is unavailable, but should be rechecked with DATABASE_URL configured.
+- **Fixes required:** Configure DATABASE_URL and rerun authenticated session/dashboard/feedback coverage. Recheck `/api/auth/session` and console errors after database setup. No application files modified; no MongoDB used; Phase 2 not tested.
+
+## Frontend status update — testing retest
+frontend:
+  - task: "LOOP authentication and intelligence dashboard shell"
+    working: true
+    needs_retesting: true
+    stuck_count: 1
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "Preview static asset issue resolved after clean build/restart. Login/signup and missing-DATABASE_URL non-crashing error states pass on desktop and mobile; no horizontal overflow. Authenticated dashboard remains blocked by absent DATABASE_URL."
+
+## Agent communication
+- agent: "testing"
+  message: "Frontend retest passes login/signup rendering, expected missing-DATABASE_URL auth errors, unauthenticated protection boundary, and responsive mobile layout. Static assets now load; no app files changed. Configure DATABASE_URL before authenticated dashboard/session/CRUD retest; recheck NextAuth session console error afterward." 
