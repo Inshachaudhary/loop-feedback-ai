@@ -185,3 +185,37 @@ backend:
 ## Agent communication
 - agent: "testing"
   message: "High priority: resolve route collision between /app/app/api/auth/[[...nextauth]]/route.js and /app/app/api/[[...path]]/route.js so signup/login POST requests reach custom handlers. Configure DATABASE_URL before retesting Prisma, persistence, tenant scoping, Zod, session, stats, and viewer 403."
+
+## Main agent fix — NextAuth/custom auth route collision
+- Updated `/app/app/api/auth/[[...nextauth]]/route.js` to route POST `/api/auth/signup` and `/api/auth/login` to validated custom handlers, while preserving NextAuth for provider/session actions.
+- `yarn build` and JavaScript lint now pass.
+- `needs_retesting: true` for signup/login and all database-dependent flows.
+
+
+## Testing Agent Run 3 — LOOP phase 1 backend retest (2026-02-01)
+- Environment check: `DATABASE_URL` is absent; per request, no MongoDB or mocked Claude was used. Database-backed signup/session persistence, Prisma tenant isolation, authenticated feedback CRUD/pagination, dashboard stats, Zod rejection after DB setup, and viewer POST feedback => 403 remain untestable.
+- `python backend_test.py` against `https://loop-feedback-ai.preview.emergentagent.com/api`: **7/7 checks passed**.
+- Passed: POST `/api/auth/signup` => HTTP 503 with `DATABASE_URL is not configured.`; POST `/api/auth/login` => HTTP 503 with same expected missing-database response (no NextAuth unsupported-action 400); GET `/api/auth/providers` => 200 Credentials provider; GET `/api/auth/session` => 200 `{}`; unauthenticated GET/POST `/api/feedback` and GET `/api/dashboard/stats` => 401.
+- No application files modified; `/app/backend_test.py` was reused.
+
+## Backend status update — testing retest
+backend:
+  - task: "PostgreSQL Prisma schema and API foundation"
+    working: "NA"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "testing"
+        comment: "Retest remains blocked because DATABASE_URL is absent; no Prisma/database-dependent verification performed."
+  - task: "Signup, login, tenant-scoped feedback, dashboard stats"
+    working: true
+    needs_retesting: true
+    stuck_count: 1
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "Retest passed 7/7 boundary checks: signup/login now correctly return missing-DATABASE_URL 503 instead of NextAuth unsupported-action 400; providers/session and unauthenticated protection checks also pass. Authenticated persistence, tenant isolation, CRUD/pagination, stats, Zod, and viewer RBAC require DATABASE_URL."
+
+## Agent communication
+- agent: "testing"
+  message: "Auth route collision fix verified externally: POST /api/auth/signup and /api/auth/login reach custom handlers and return expected 503 when DATABASE_URL is unavailable. All unauthenticated protection and NextAuth provider/session checks pass. Configure DATABASE_URL and rerun full authenticated Prisma/RBAC coverage; no MongoDB or Claude mock used."
