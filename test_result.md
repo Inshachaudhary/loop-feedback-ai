@@ -219,3 +219,30 @@ backend:
 ## Agent communication
 - agent: "testing"
   message: "Auth route collision fix verified externally: POST /api/auth/signup and /api/auth/login reach custom handlers and return expected 503 when DATABASE_URL is unavailable. All unauthenticated protection and NextAuth provider/session checks pass. Configure DATABASE_URL and rerun full authenticated Prisma/RBAC coverage; no MongoDB or Claude mock used."
+
+
+## Frontend test request — LOOP phase 1 auth/dashboard UI
+- User explicitly approved Playwright testing for login, signup, authentication, protected dashboard, unauthenticated protection, responsive behavior, console errors, and visible UI issues.
+- PostgreSQL architecture must remain unchanged; database-dependent flows may show setup state because DATABASE_URL is not configured.
+
+
+## Testing Agent Run 4 — LOOP phase 1 frontend UI (2026-08-07)
+- **Critical failure:** configured preview URL renders only `Loading LOOP…` indefinitely; login branding/form controls never mount, so signup mode, auth error state, protected-dashboard boundary, and responsive UI could not be exercised.
+- Browser diagnostics: repeated 404s for `/_next/static/css/app/layout.css`, `/_next/static/chunks/app-pages-internals.js`, `main-app.js`, `app/layout.js`, and `app/page.js`; failed requests also include Cloudflare RUM (aborted). No successful UI bundle was available.
+- Desktop 1920x800 and mobile 390x844 both blocked at the same loading state. No dashboard data was exposed, but this is due to the app shell failing to load rather than a verified auth guard.
+- No application files modified; no MongoDB used; Phase 2 not tested.
+
+## Frontend status update — testing retest
+frontend:
+  - task: "LOOP authentication and intelligence dashboard shell"
+    working: false
+    needs_retesting: true
+    stuck_count: 1
+    status_history:
+      - working: false
+        agent: "testing"
+        comment: "Critical preview deployment failure: HTML loads but all Next.js CSS/JS chunks return 404, leaving permanent Loading LOOP state. Login/signup, missing-DATABASE_URL UI error, protected dashboard behavior, and responsive interactions are untestable until static assets are served correctly."
+
+## Agent communication
+- agent: "testing"
+  message: "High priority: investigate preview deployment/static asset routing. The configured URL returns 404 for all Next.js app chunks and CSS, so the frontend never hydrates beyond Loading LOOP…. Verify deployment build output, asset basePath/CDN/cache, and restart/redeploy before requesting UI retest."
