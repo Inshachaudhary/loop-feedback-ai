@@ -52,16 +52,15 @@ function AuthScreen() {
         if (!response.ok) throw new Error(data.error || 'Unable to sign up.')
       }
       const res = await signIn('credentials', { email: form.email, password: form.password, redirect: false })
-      if (res?.error) throw new Error('Invalid email or password.')
-      if (!res?.ok) throw new Error('Sign in did not complete.')
-      // Verify the session cookie was actually persisted before navigating. This closes
-      // a race where SessionProvider's initial fetch on reload can be aborted by the
-      // reload itself, leaving useSession() in 'unauthenticated' state and bouncing the
-      // user back to the Sign In page even though the cookie is valid.
-      let verified = await getSession()
-      if (!verified) { await new Promise((r) => setTimeout(r, 250)); verified = await getSession() }
-      if (!verified) throw new Error('Could not establish a session. Please try again.')
-      window.location.href = '/'
+      // Trust NextAuth's own signal. `signIn` sets `error` when authorize() returned null
+      // and `ok=true` only when the Set-Cookie for the session-token was returned by the
+      // callback endpoint. Anything more (extra getSession round-trips) races with cookie
+      // propagation on cold Neon Postgres starts and gives false "session not established"
+      // errors even though the login actually succeeded.
+      if (res?.error) throw new Error(res.error === 'CredentialsSignin' ? 'Invalid email or password.' : res.error)
+      if (!res?.ok) throw new Error('Sign in did not complete. Please try again.')
+      // Hard navigate so SessionProvider hydrates fresh with the just-set cookie.
+      window.location.href = res.url || '/'
     } catch (err) {
       setError(err.message); setBusy(false)
     }

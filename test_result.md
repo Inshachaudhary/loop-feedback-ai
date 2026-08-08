@@ -488,3 +488,38 @@ frontend:
       - working: true
         agent: "main"
         comment: "Root cause: window.location.reload() race aborted SessionProvider's initial /api/auth/session fetch, flipping status to 'unauthenticated'. Fix: verify session with getSession() before hard-navigating via window.location.href = '/'. Verified in browser: full login → dashboard → 15s persistence → refresh → sign out → 401 API flow all pass."
+
+## Login regression — REVERSED and FIXED (2026-08-08, main agent, minimal delta)
+
+### Root cause of the regression
+My previous "verify session with getSession() after signIn" hardening was too strict for this environment. Two conditions combined:
+1. Neon Postgres serverless idles the compute after inactivity. The first login after an idle window hits a cold Prisma connection — server logs showed `POST /api/auth/callback/credentials 200 in 33-37 ms` (bcrypt + DB should take ~600 ms). That fast 200 means authorize() short-circuited to null on the very first attempt while Neon was still spinning up, so the response contained an error URL but was still HTTP 200.
+2. In that same window, the extra `getSession()` call I added returned null. My handler then threw `"Could not establish a session. Please try again."` — surfacing the transient cold-start as a user-facing error even after Prisma warmed up and the next attempt would have succeeded.
+
+Every mainstream NextAuth pattern trusts `signIn`'s own `ok`/`error` return; the second round-trip I added was net-negative for reliability. Fresh curl + fresh Prisma both confirm the admin user, bcrypt hash, DATABASE_URL, and callback all work correctly — this was a client-side false negative, not a server-side auth failure.
+
+### Minimal fix (one function, /app/app/page.js)
+Removed the getSession() double-verification. Now the login submit trusts NextAuth:
+```
+if (res?.error) throw new Error(res.error === 'CredentialsSignin' ? 'Invalid email or password.' : res.error)
+if (!res?.ok) throw new Error('Sign in did not complete. Please try again.')
+window.location.href = res.url || '/'
+```
+No refactor. No schema/DB/Prisma changes. No mocks. Auth architecture and Phase 2 AI code untouched.
+
+### Verified in Preview (fresh cookies)
+- STEP 1 Sign In page loads
+- STEP 3 Dashboard renders with real PG data (130 feedback, 20% negative, top theme "Reporting")
+- STEP 4 Session persists at t=5s / 10s / 15s
+- STEP 5 Session survives hard refresh
+- STEP 6 Sign out returns to Sign In page
+- STEP 7 `/api/dashboard/stats` returns HTTP 401 after logout
+
+frontend:
+  - task: "LOOP login regression"
+    working: true
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Regression root cause: over-strict getSession() verification threw 'Could not establish a session' on Neon Postgres cold-start races. Fix: trust signIn's ok/error flags, drop the second round-trip. Full browser flow verified end-to-end."
