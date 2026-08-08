@@ -308,3 +308,39 @@ backend:
 ## Agent communication
 - agent: "testing"
   message: "Phase 1 non-destructive check: Prisma connects to DATABASE_URL; validate/generate pass. Remote migration 20260805073347_init exists, local prisma/migrations is absent, and all expected LOOP tables are missing. Do not reset, db push, or apply migrations until the correct database/migration history is confirmed."
+
+
+## Fresh PostgreSQL database setup
+- Replaced only `DATABASE_URL` in `/app/.env` with the user-provided fresh database value; `MONGO_URL` unchanged and secret not printed.
+- Restarted Next.js; generated Prisma client and created/applied local migration `20260808072825_init`.
+- Ran `node prisma/seed.js` successfully. Direct Prisma verification: 1 demo workspace, 3 users with ADMIN/ANALYST/VIEWER roles, 128 feedback records, and 8 themes.
+- Authenticated Phase 1 verification is now requested; Phase 2 remains blocked until it passes.
+
+## Testing Agent Run 7 — LOOP Phase 1 authenticated backend verification (2026-08-08)
+- Real PostgreSQL only: signup created temporary workspaces successfully (HTTP 201), custom login returned HTTP 200, and seeded admin/analyst/viewer NextAuth credential callbacks each returned HTTP 200 with persistent `/api/auth/session` users and correct roles/workspace `demo-workspace`. No mocks, MongoDB, resets, or Phase 2 actions used.
+- Unauthenticated protection passed: feedback GET/POST and dashboard stats returned 401; providers/session endpoints returned 200.
+- **Critical failure:** despite valid NextAuth session cookies and `/api/auth/session` returning authenticated admin/analyst/viewer users, custom `/api/feedback` and `/api/dashboard/stats` handlers returned 401 `Authentication required.` for every authenticated role. Consequently feedback GET/POST, dashboard totals, viewer 403 RBAC, pagination/search, and tenant isolation could not be verified. This indicates `getServerSession(authOptions)` in the catch-all API handler does not recognize the externally-issued NextAuth session under the supervisor/preview request context (likely NEXTAUTH_URL/host or cookie secret/config mismatch); investigate server logs and runtime auth configuration.
+- Test script updated only: `/app/backend_test.py`; no application files modified.
+
+## Backend status update — authenticated Phase 1
+backend:
+  - task: "PostgreSQL Prisma schema and API foundation"
+    working: true
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "Fresh PostgreSQL migration/seed confirmed by user; live API signup and NextAuth session persistence reached real seeded records successfully."
+  - task: "Signup, login, tenant-scoped feedback, dashboard stats"
+    working: false
+    needs_retesting: true
+    stuck_count: 2
+    status_history:
+      - working: false
+        agent: "testing"
+        comment: "Critical authenticated API failure: valid admin/analyst/viewer NextAuth sessions are visible at /api/auth/session, but catch-all feedback/stats handlers return 401 for all roles. CRUD, stats, RBAC, pagination/search, and tenant isolation blocked until getServerSession runtime context is fixed."
+
+## Agent communication
+- agent: "testing"
+  message: "High priority: authenticated session cookies are issued and /api/auth/session returns correct users, but getServerSession(authOptions) inside app/api/[[...path]]/route.js returns null for all roles, causing 401 on feedback/stats. Check NEXTAUTH_URL/NEXTAUTH_SECRET, forwarded host/protocol, cookie domain/path, and supervisor runtime env; then rerun full Phase 1 authenticated verification.
+"
