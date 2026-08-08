@@ -696,6 +696,7 @@ function App() {
   const [loading, setLoading] = useState(true)
   const [showCapture, setShowCapture] = useState(false)
   const [showImport, setShowImport] = useState(false)
+  const [profileOpen, setProfileOpen] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
@@ -724,7 +725,7 @@ function App() {
   }[active]
 
   return <div className="min-h-screen bg-background text-foreground">
-    <aside className="fixed inset-y-0 left-0 hidden w-64 border-r border-border bg-card px-4 py-5 lg:block">
+    <aside className="fixed inset-y-0 left-0 z-30 w-64 border-r border-border bg-card px-4 py-5 block">
       <div className="flex items-center gap-3 px-3">
         <div className="grid h-8 w-8 place-items-center bg-foreground text-sm font-bold text-background">L</div>
         <span className="text-lg font-semibold tracking-[-0.03em]">LOOP</span>
@@ -751,22 +752,34 @@ function App() {
         }} className="flex w-full items-center gap-3 px-3 py-2 text-sm text-muted-foreground hover:text-foreground"><LogOut size={16} />Sign out</button>
       </div>
     </aside>
-    <main className="lg:pl-64">
+    <main className="pl-64">
       <header className="flex h-16 items-center justify-between border-b border-border bg-card px-6 lg:px-10">
-        <div className="flex items-center gap-3 lg:hidden">
-          <div className="grid h-7 w-7 place-items-center bg-foreground text-xs font-bold text-background">L</div>
-          <span className="font-semibold">LOOP</span>
-        </div>
         <div className="hidden items-center gap-2 text-sm text-muted-foreground sm:flex">
           <Search size={15} /><span>Search feedback</span>
           <kbd className="ml-2 border border-border px-1.5 py-0.5 text-[10px]">⌘ K</kbd>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="hidden text-right text-xs sm:block">
-            <p className="font-medium">{session?.user?.name}</p>
-            <p className="text-muted-foreground">{session?.user?.role}</p>
-          </div>
-          <span className="grid h-9 w-9 place-items-center bg-[#d8e2d8] text-xs font-semibold">{(session?.user?.name || 'U')[0]}</span>
+        <div className="relative ml-auto flex items-center gap-4">
+          <button onClick={() => setProfileOpen((v) => !v)} className="flex items-center gap-3 border border-transparent px-2 py-1.5 hover:border-border" aria-haspopup="menu" aria-expanded={profileOpen}>
+            <div className="hidden text-right text-xs sm:block">
+              <p className="font-medium">{session?.user?.name}</p>
+              <p className="text-muted-foreground">{session?.user?.role}</p>
+            </div>
+            <span className="grid h-9 w-9 place-items-center bg-[#d8e2d8] text-xs font-semibold">{(session?.user?.name || 'U')[0]}</span>
+            <ChevronDown size={14} className="text-muted-foreground" />
+          </button>
+          {profileOpen && <>
+            {/* backdrop to close on outside click */}
+            <div className="fixed inset-0 z-40" onClick={() => setProfileOpen(false)} />
+            <div className="absolute right-0 top-full z-50 mt-2 w-56 border border-border bg-card shadow-lg" role="menu">
+              <div className="border-b border-border px-4 py-3">
+                <p className="text-sm font-medium">{session?.user?.name}</p>
+                <p className="text-xs text-muted-foreground">{session?.user?.email}</p>
+                <p className="mt-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{session?.user?.role}</p>
+              </div>
+              <button onClick={() => { setProfileOpen(false); setActive('settings') }} className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-foreground hover:bg-muted"><Settings size={14} />Settings</button>
+              <button onClick={() => { window.location.href = '/api/logout' }} className="flex w-full items-center gap-2 border-t border-border px-4 py-2.5 text-sm text-foreground hover:bg-muted"><LogOut size={14} />Sign out</button>
+            </div>
+          </>}
         </div>
       </header>
 
