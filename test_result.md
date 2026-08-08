@@ -454,3 +454,37 @@ frontend:
 ## Agent communication
 - agent: "main"
   message: "Phase 2 complete. All 6 requested features shipped and verified visually in the preview. No database resets, no MongoDB, no auth architecture changes. Ask LOOP intentionally uses lexical retrieval since Emergent Universal Key does not expose an embeddings model — this is deterministic and workspace-isolated. If further backend regression is needed, delegate to deep_testing_backend_nextjs; existing 22/22 backend tests should still pass."
+
+## Login redirect bug — FIXED (2026-08-08, main agent)
+
+### Root cause
+- Server-side auth was 100% correct: `POST /api/auth/callback/credentials` returned 200 in ~640ms, set `__Secure-next-auth.session-token`, and `GET /api/auth/session` returned the full admin user (verified via raw curl and again via `page.evaluate("fetch('/api/auth/session')")`).
+- The bug was **client-side hydration racing with `window.location.reload()`**. On login the code did `signIn({ redirect: false })` then immediately `window.location.reload()`. During the very small window between the `signIn` resolving and the reload committing, `SessionProvider` fired an initial `/api/auth/session` fetch that got aborted by the reload navigation. That produced a `CLIENT_FETCH_ERROR: Failed to fetch /api/auth/session` in the console, and with `refetchInterval={0}` / `refetchOnWindowFocus={false}` there was no retry — so `status` collapsed to `'unauthenticated'` and the `AuthScreen` re-rendered even though the cookie was live. That is exactly what the user saw: "click Sign in → back to Sign In page".
+- Secondary contributor: the dashboard stats `useEffect` unconditionally set `loading=true` on every session identity refresh, briefly re-blanking the dashboard content.
+
+### Minimal fix
+1. `/app/app/page.js` — `AuthScreen.submit`: after `signIn({ redirect: false })` returns `ok`, call `getSession()` to confirm the cookie really produced a valid session (with a 250ms retry) before navigating. Then use `window.location.href = '/'` for a clean hard navigation. This closes the fetch-race entirely — by the time we navigate, the session is proven to be readable.
+2. `/app/app/page.js` — stats `useEffect`: only flip `loading=true` when there is no cached `stats` yet. Prevents "Loading workspace intelligence…" flicker on silent session identity changes.
+3. `/app/next.config.js` — added `allowedDevOrigins` for the two preview hostnames, silencing the Next 15 cross-origin dev warning that could throttle `/api/*` in dev.
+
+No Prisma changes, no DB reseed, no auth architecture change, no UI refactor.
+
+### Browser verification (Playwright, fresh cookie jar, real preview URL)
+- STEP 1 Sign In page loads ✅
+- STEP 2 Fill `admin@loop.demo` / `loop-demo-2025`, click **Sign in** ✅
+- STEP 3 Dashboard renders with real PostgreSQL data — "Good morning, Avery", **130 Total Feedback, 20% Negative, Reporting top theme** ✅
+- STEP 4 Session persists at t=5s, t=10s, t=15s (no bounce back) ✅
+- STEP 5 Hard-refresh (`page.reload()`) keeps the user authenticated on the dashboard ✅
+- STEP 6 Click **Sign out** → returns to Sign In page ✅
+- STEP 7 `/api/dashboard/stats` returns HTTP 401 after logout (server-side protection intact) ✅
+
+Note: A transient 502 was observed once during the compile of `/api/[[...path]]` because the dev server's memory cap (`--max-old-space-size=512`) triggered a restart while compiling the (large) API route. This is a dev-only memory pressure signal, not a code bug; a curl warm-up + retry immediately resolved it.
+
+frontend:
+  - task: "LOOP login/session redirect"
+    working: true
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Root cause: window.location.reload() race aborted SessionProvider's initial /api/auth/session fetch, flipping status to 'unauthenticated'. Fix: verify session with getSession() before hard-navigating via window.location.href = '/'. Verified in browser: full login → dashboard → 15s persistence → refresh → sign out → 401 API flow all pass."

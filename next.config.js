@@ -1,5 +1,11 @@
 const nextConfig = {
   output: 'standalone',
+  // Silence Next 15 cross-origin dev warning + allow the preview host's `/_next/*`
+  // resources to be fetched from the same origin without being throttled/blocked.
+  allowedDevOrigins: [
+    'loop-feedback-ai.preview.emergentagent.com',
+    'loop-feedback-ai.cluster-9.preview.emergentcf.cloud',
+  ],
   images: {
     unoptimized: true,
     remotePatterns: [

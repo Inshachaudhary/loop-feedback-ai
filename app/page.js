@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { signIn, signOut, useSession } from 'next-auth/react'
+import { getSession, signIn, signOut, useSession } from 'next-auth/react'
 import { Activity, ArrowUpRight, BarChart3, Check, ChevronDown, ChevronRight, CircleHelp, Download, FileText, Filter, Inbox, LayoutDashboard, Loader2, LogOut, MessageSquare, Plus, Printer, RefreshCw, Search, Send, Settings, Sparkles, Upload, Users, X, Zap } from 'lucide-react'
 import { AreaChart, Area, BarChart, Bar, CartesianGrid, Cell, Legend, Line, LineChart, PieChart, Pie, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 
@@ -53,7 +53,15 @@ function AuthScreen() {
       }
       const res = await signIn('credentials', { email: form.email, password: form.password, redirect: false })
       if (res?.error) throw new Error('Invalid email or password.')
-      window.location.reload()
+      if (!res?.ok) throw new Error('Sign in did not complete.')
+      // Verify the session cookie was actually persisted before navigating. This closes
+      // a race where SessionProvider's initial fetch on reload can be aborted by the
+      // reload itself, leaving useSession() in 'unauthenticated' state and bouncing the
+      // user back to the Sign In page even though the cookie is valid.
+      let verified = await getSession()
+      if (!verified) { await new Promise((r) => setTimeout(r, 250)); verified = await getSession() }
+      if (!verified) throw new Error('Could not establish a session. Please try again.')
+      window.location.href = '/'
     } catch (err) {
       setError(err.message); setBusy(false)
     }
@@ -693,7 +701,9 @@ function App() {
 
   useEffect(() => {
     if (status === 'authenticated') {
-      setLoading(true)
+      // Only show the loader on the very first fetch; subsequent session re-hydrations
+      // (which change the session object identity) should not blank out the dashboard.
+      setStats((current) => { if (!current) setLoading(true); return current })
       fetch('/api/dashboard/stats').then((r) => r.json()).then(setStats).catch(() => setStats({ setupRequired: true })).finally(() => setLoading(false))
     } else if (status === 'unauthenticated') setLoading(false)
   }, [status, session?.user?.email, refreshKey])
