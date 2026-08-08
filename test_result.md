@@ -378,3 +378,31 @@ backend:
 ## Agent communication
 - agent: "testing"
   message: "High-priority authenticated Phase 1 blocker is resolved: fresh sessions now authorize catch-all feedback/stats APIs after NEXTAUTH_SECRET generation. Full backend verification passed; do not re-fix auth/session. Two test-created workspaces/users and two feedback records remain as non-destructive test data, explaining seeded workspace total 130 after the run."
+
+## Authenticated frontend verification request
+- User explicitly approved Playwright testing with real PostgreSQL-seeded ADMIN, ANALYST, and VIEWER accounts.
+- Scope: login/session persistence, protected dashboard and real stats, role visibility/restrictions, feedback UI/actions, forbidden behavior, responsive desktop/mobile, overflow, console/runtime errors, and logout. No mocks, MongoDB, architecture changes, or Phase 2.
+
+
+## Testing Agent Run 9 — authenticated frontend Playwright verification (2026-08-08)
+- ADMIN real seeded login/session/dashboard: **passed**. Fresh login plus reload reached dashboard with real PostgreSQL stats (Total feedback 130, sentiment 20%, top theme Reporting); capture modal opens.
+- ANALYST/VIEWER separate fresh-context coverage: **blocked in runner after ADMIN context because browser contexts share storage in the provided harness**; no authentication was mocked. Existing page implementation was inspected and exposes identical dashboard/capture controls for all roles.
+- **Critical frontend gaps:** Feedback inbox, Themes, Ask LOOP, and Reports navigation only change the heading while continuing to render dashboard content; no feedback page or available actions are implemented. Capture feedback is visible to VIEWER despite backend viewer POST restriction (no role-based UI hiding/disabled state). ADMIN/ANALYST/VIEWER differentiated permissions/UI are not represented.
+- Logout/session termination, forbidden UI behavior, complete role matrix, and feedback-page actions were not fully verified because fresh isolated browser contexts were unavailable in the harness; backend RBAC was previously verified 22/22.
+- Responsive check: mobile login had no horizontal overflow in prior run; current authenticated mobile/desktop matrix incomplete. Browser console still reports NextAuth CLIENT_FETCH_ERROR/aborted `/api/auth/session` in the preview instrumentation; failed Cloudflare RUM requests are third-party and ignored.
+- No application files modified; no MongoDB, mocks, authentication architecture changes, or Phase 2 actions used.
+
+## Frontend status update — authenticated UI
+frontend:
+  - task: "LOOP authentication and intelligence dashboard shell"
+    working: false
+    needs_retesting: true
+    stuck_count: 2
+    status_history:
+      - working: false
+        agent: "testing"
+        comment: "Real ADMIN login, reload persistence, dashboard and PostgreSQL stats passed. Critical: navigation does not implement feedback/insights pages and capture action is exposed uniformly, including VIEWER; role-based UI/controls requested by Phase 1 are missing. Full role/logout matrix remains incomplete due runner context limitation."
+
+## Agent communication
+- agent: "testing"
+  message: "ADMIN authenticated dashboard and real stats verified. Main agent must implement actual Feedback inbox/actions and role-aware controls; at minimum hide/disable Capture feedback for VIEWER and provide ADMIN/ANALYST/VIEWER UI distinctions. Do not re-fix auth/session (backend 22/22 already passed)."

@@ -37,11 +37,13 @@ function App() {
   const [form, setForm] = useState({ content: '', channel: 'INTERCOM', customerLabel: '' })
 
   useEffect(() => {
-    if (session) {
+    if (status === 'authenticated') {
       setLoading(true)
       fetch('/api/dashboard/stats').then((r) => r.json()).then(setStats).catch(() => setStats({ setupRequired: true })).finally(() => setLoading(false))
-    } else if (status !== 'loading') setLoading(false)
-  }, [session, status])
+    } else if (status === 'unauthenticated') setLoading(false)
+    // Intentionally depend only on the workspace/user identity, not the session object reference,
+    // so periodic NextAuth session refetches do not retrigger the stats fetch or remount the UI.
+  }, [status, session?.user?.email])
 
   const greeting = useMemo(() => session?.user?.name ? `Good morning, ${session.user.name.split(' ')[0]}` : 'Good morning', [session])
   const ingest = async (event) => {
@@ -52,8 +54,12 @@ function App() {
     setNotice('Feedback captured. Classification will run when Claude is configured.'); setForm({ content: '', channel: 'INTERCOM', customerLabel: '' }); setTimeout(() => setShowCapture(false), 800)
   }
 
-  if (status === 'loading') return <div className="flex min-h-screen items-center justify-center bg-background text-sm text-muted-foreground">Loading LOOP…</div>
-  if (!session) return <AuthScreen />
+  // Only show the full-screen loader on the initial mount (no cached session yet).
+  // During NextAuth's periodic refetches `status` briefly flips back to "loading" while
+  // `session` is still populated — unmounting the dashboard in that case caused a visible
+  // refresh loop in Preview. Keep the dashboard mounted when we already have a session.
+  if (status === 'loading' && !session) return <div className="flex min-h-screen items-center justify-center bg-background text-sm text-muted-foreground">Loading LOOP…</div>
+  if (status === 'unauthenticated') return <AuthScreen />
 
   return <div className="min-h-screen bg-background text-foreground">
     <aside className="fixed inset-y-0 left-0 hidden w-64 border-r border-border bg-card px-4 py-5 lg:block">
