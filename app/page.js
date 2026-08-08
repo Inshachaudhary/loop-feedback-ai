@@ -743,7 +743,12 @@ function App() {
       </nav>
       <div className="absolute bottom-5 left-4 right-4 border-t border-border pt-4">
         <div className="mb-2 px-3 text-[11px] text-muted-foreground">Signed in as <span className="font-medium text-foreground">{session?.user?.role}</span></div>
-        <button onClick={() => signOut({ callbackUrl: '/' })} className="flex w-full items-center gap-3 px-3 py-2 text-sm text-muted-foreground hover:text-foreground"><LogOut size={16} />Sign out</button>
+        <button onClick={() => {
+          // Iframe-safe logout: plain top-level navigation to our server-side
+          // /api/logout endpoint, which expires the NextAuth cookies and 302s to /.
+          // No fetch, no CSRF token dance — impossible for the browser to stall.
+          window.location.href = '/api/logout'
+        }} className="flex w-full items-center gap-3 px-3 py-2 text-sm text-muted-foreground hover:text-foreground"><LogOut size={16} />Sign out</button>
       </div>
     </aside>
     <main className="lg:pl-64">

@@ -523,3 +523,40 @@ frontend:
       - working: true
         agent: "main"
         comment: "Regression root cause: over-strict getSession() verification threw 'Could not establish a session' on Neon Postgres cold-start races. Fix: trust signIn's ok/error flags, drop the second round-trip. Full browser flow verified end-to-end."
+
+## URGENT login regression — REAL root cause found and fixed (2026-08-08, main agent)
+
+### Real root cause (which my earlier fixes missed)
+The Emergent Preview embeds the app inside a cross-site iframe (`next.config.js` intentionally sets `frame-ancestors *` and `X-Frame-Options: ALLOWALL` so this is a first-class use case). By default NextAuth v4 sets its cookies with `SameSite=Lax`. Modern browsers (Safari ITP, Firefox strict, Chrome default) block `SameSite=Lax` cookies from being sent on subresource requests inside a cross-site iframe. So inside the Emergent iframe:
+1. The user submits credentials.
+2. `POST /api/auth/callback/credentials` succeeds server-side and returns `Set-Cookie: __Secure-next-auth.session-token=...; SameSite=Lax`.
+3. The browser accepts the cookie *for that response* but refuses to send it back on the next subresource request from the same iframe (that is exactly how third-party cookie blocking works).
+4. `useSession()`'s next call to `/api/auth/session` therefore gets `{}` -> `status === 'unauthenticated'` -> `<AuthScreen />` re-renders -> the user is bounced back to the Sign In screen even though the login itself was successful.
+
+My previous automated Playwright tests missed this because they ran the app in the top-level window (no iframe boundary), where SameSite=Lax works fine. Reproducing the flow inside an actual cross-site iframe exposed the failure precisely.
+
+### Minimal fix (three tiny changes, no refactor, no schema/DB touch)
+1. `/app/lib/auth.js` — explicit NextAuth `cookies` config setting `SameSite=None; Secure; HttpOnly` on the session-token, callback-url, and csrf-token cookies. `SameSite=None` is required for cross-site iframe contexts, and the `__Secure-` / `__Host-` prefixes remain intact so security guarantees don't regress.
+2. `/app/app/api/[[...path]]/route.js` — added a `GET /api/logout` endpoint that expires the three NextAuth cookies and 302-redirects to `/` on the actual forwarded host. This is a plain top-level browser navigation, no fetch/CSRF dance, so it works reliably inside iframes.
+3. `/app/app/page.js` — the Sign out button now does `window.location.href = '/api/logout'` (the NextAuth client-side `signOut()` helper occasionally stalled inside cross-site iframes waiting on its internal `/api/auth/csrf` fetch).
+
+No changes to `DATABASE_URL`, `MONGO_URL`, Prisma schema, seed data, or auth architecture. Phase 2 AI features are untouched.
+
+### Verified inside an actual cross-site iframe (Playwright)
+Simulated the Emergent Preview embed context precisely by mounting the app inside an iframe hosted from `https://example.com/host` (different eTLD+1 from `preview.emergentagent.com`):
+
+- [1] Login inside iframe → dashboard rendered with **130 real PostgreSQL feedback**  OK
+- [2] Session persisted 15 seconds inside iframe  OK
+- [3] Session survived a hard refresh inside iframe  OK
+- [4] Sign out returned to Sign In inside iframe  OK
+- [5] `/api/dashboard/stats` returned HTTP 401 after logout  OK
+- [6] Re-login inside iframe works  OK
+
+frontend:
+  - task: "LOOP login inside cross-site iframe (Emergent Preview embed)"
+    working: true
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Root cause: SameSite=Lax on NextAuth cookies is blocked inside cross-site iframes by modern browsers. Fix: NextAuth cookies config uses SameSite=None; Secure. Sign out uses a dedicated /api/logout endpoint that clears cookies via 302 (no fetch race). Verified inside a real cross-site iframe: login, 15s persistence, hard refresh, sign out, 401 check, and re-login all pass."

@@ -105,6 +105,21 @@ async function handle(request, { params }) {
   const method = request.method
   try {
     // ─────────────────────── PUBLIC ROUTES ───────────────────────
+    if (path === '/logout' && method === 'GET') {
+      // Explicit iframe-safe logout: expire the NextAuth cookies and redirect to /.
+      // Uses a plain top-level GET navigation (no CSRF/fetch dance) so it works
+      // reliably inside cross-site iframe contexts where the client-side signOut
+      // helper occasionally stalls. Build the redirect target from the forwarded
+      // host header so it matches the browser's origin (not the internal 0.0.0.0).
+      const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'localhost'
+      const proto = request.headers.get('x-forwarded-proto') || 'https'
+      const response = NextResponse.redirect(`${proto}://${host}/`)
+      const clear = { path: '/', expires: new Date(0), sameSite: 'none', secure: true, httpOnly: true }
+      response.cookies.set('__Secure-next-auth.session-token', '', clear)
+      response.cookies.set('__Secure-next-auth.callback-url', '', clear)
+      response.cookies.set('__Host-next-auth.csrf-token', '', clear)
+      return response
+    }
     if (path === '/auth/signup' && method === 'POST') {
       const db = getDb()
       if (!db) return json({ error: 'DATABASE_URL is not configured.' }, 503)
