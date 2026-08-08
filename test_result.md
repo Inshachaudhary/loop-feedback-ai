@@ -273,3 +273,38 @@ frontend:
 ## Agent communication
 - agent: "testing"
   message: "Frontend retest passes login/signup rendering, expected missing-DATABASE_URL auth errors, unauthenticated protection boundary, and responsive mobile layout. Static assets now load; no app files changed. Configure DATABASE_URL before authenticated dashboard/session/CRUD retest; recheck NextAuth session console error afterward." 
+
+## PostgreSQL configuration and Phase 1 database verification
+- `DATABASE_URL` is configured in `/app/.env` only; its value was not echoed or added to source/.env.example. Next.js was restarted successfully.
+- `prisma generate` succeeded and `prisma migrate deploy` connected to PostgreSQL but found no local migrations.
+- `prisma db seed` was attempted and failed because `public.Workspace` does not exist.
+- `prisma migrate dev --name init` was intentionally not completed: Prisma detected an already-applied remote migration (`20260805073347_init`) missing from the local repository plus an incompatible existing schema. No reset/drop was run because the database contents are not safe to destroy.
+- Phase 1 authenticated verification and Phase 2 are blocked pending confirmation of the correct empty/LOOP PostgreSQL database or recovery of the matching migration history.
+
+
+## Testing Agent Run 6 — PostgreSQL/Prisma Phase 1 non-destructive verification (2026-08-07)
+- `DATABASE_URL` is present in `/app/.env` and Prisma successfully connected to PostgreSQL database `neondb`, schema `public`; the URL value was not printed.
+- `yarn prisma validate`: **passed**. `yarn prisma generate`: **passed**. `yarn prisma migrate status`: exit 0 and reported no local migrations / “Database schema is up to date”; this does not establish schema parity because `prisma/migrations` is absent.
+- Safe Prisma catalog query confirmed remote `_prisma_migrations` contains applied migration `20260805073347_init` (`finished_at` 2026-08-05T07:33:59.102Z), but none of the expected LOOP tables (`Workspace`, `User`, `Feedback`, `Theme`, `FeedbackTheme`, `Embedding`, `Report`) exist in `public`.
+- Exact blocker: the repository has no local migration directory while the target database has a remote applied migration, and the expected Prisma model tables are absent. Authenticated signup/login, feedback CRUD, dashboard stats, and tenant/RBAC verification cannot safely proceed. No migrate reset, db push, destructive SQL, MongoDB, mock, or Phase 2 action was run.
+
+## Backend status update — Phase 1 database verification
+backend:
+  - task: "PostgreSQL Prisma schema and API foundation"
+    working: false
+    needs_retesting: true
+    status_history:
+      - working: false
+        agent: "testing"
+        comment: "DATABASE_URL connectivity verified and Prisma schema validates/generates, but expected LOOP tables are absent. Remote _prisma_migrations has 20260805073347_init while local prisma/migrations is missing; schema drift/migration provenance must be reconciled before any migration or authenticated testing."
+  - task: "Signup, login, tenant-scoped feedback, dashboard stats"
+    working: "NA"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "testing"
+        comment: "Phase 1 authenticated endpoint verification remains blocked by missing expected PostgreSQL tables. Connection is available, but no signup/feedback/stats data operations were attempted."
+
+## Agent communication
+- agent: "testing"
+  message: "Phase 1 non-destructive check: Prisma connects to DATABASE_URL; validate/generate pass. Remote migration 20260805073347_init exists, local prisma/migrations is absent, and all expected LOOP tables are missing. Do not reset, db push, or apply migrations until the correct database/migration history is confirmed."
