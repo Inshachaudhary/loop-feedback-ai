@@ -742,7 +742,7 @@ function App() {
           {id === 'feedback' && stats?.total ? <span className="ml-auto text-xs opacity-60">{stats.total}</span> : null}
         </button>)}
       </nav>
-      <div className="absolute bottom-5 left-4 right-4 border-t border-border pt-4">
+      <div className="absolute bottom-5 left-4 right-4">
         <div className="mb-2 px-3 text-[11px] text-muted-foreground">Signed in as <span className="font-medium text-foreground">{session?.user?.role}</span></div>
         <button onClick={() => {
           // Iframe-safe logout: plain top-level navigation to our server-side
